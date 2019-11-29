@@ -65,6 +65,7 @@ import com.alipay.sofa.jraft.rhea.util.NetUtil;
 import com.alipay.sofa.jraft.rhea.util.Strings;
 import com.alipay.sofa.jraft.rpc.RaftRpcServerFactory;
 import com.alipay.sofa.jraft.util.BytesUtil;
+import com.alipay.sofa.jraft.util.Describer;
 import com.alipay.sofa.jraft.util.Endpoint;
 import com.alipay.sofa.jraft.util.ExecutorServiceHelper;
 import com.alipay.sofa.jraft.util.MetricThreadPoolExecutor;
@@ -90,6 +91,7 @@ public class StoreEngine implements Lifecycle<StoreEngineOptions> {
 
     private final ConcurrentMap<Long, RegionKVService> regionKVServiceTable = Maps.newConcurrentMapLong();
     private final ConcurrentMap<Long, RegionEngine>    regionEngineTable    = Maps.newConcurrentMapLong();
+    private final StateListenerContainer<Long>         stateListenerContainer;
     private final PlacementDriverClient                pdClient;
     private final long                                 clusterId;
 
@@ -117,9 +119,10 @@ public class StoreEngine implements Lifecycle<StoreEngineOptions> {
 
     private boolean                                    started;
 
-    public StoreEngine(PlacementDriverClient pdClient) {
-        this.pdClient = pdClient;
+    public StoreEngine(PlacementDriverClient pdClient, StateListenerContainer<Long> stateListenerContainer) {
+        this.pdClient = Requires.requireNonNull(pdClient, "pdClient");
         this.clusterId = pdClient.getClusterId();
+        this.stateListenerContainer = Requires.requireNonNull(stateListenerContainer, "stateListenerContainer");
     }
 
     @Override
@@ -177,7 +180,8 @@ public class StoreEngine implements Lifecycle<StoreEngineOptions> {
             this.raftStateTrigger = StoreEngineHelper.createRaftStateTrigger(opts.getLeaderStateTriggerCoreThreads());
         }
         if (this.snapshotExecutor == null) {
-            this.snapshotExecutor = StoreEngineHelper.createSnapshotExecutor(opts.getSnapshotCoreThreads());
+            this.snapshotExecutor = StoreEngineHelper.createSnapshotExecutor(opts.getSnapshotCoreThreads(),
+                opts.getSnapshotMaxThreads());
         }
         // init rpc executors
         final boolean useSharedRpcExecutor = opts.isUseSharedRpcExecutor();
@@ -205,6 +209,9 @@ public class StoreEngine implements Lifecycle<StoreEngineOptions> {
         // init db store
         if (!initRawKVStore(opts)) {
             return false;
+        }
+        if (this.rawKVStore instanceof Describer) {
+            DescriberManager.getInstance().addDescriber((Describer) this.rawKVStore);
         }
         // init all region engine
         if (!initAllRegionEngine(opts, store)) {
@@ -410,6 +417,10 @@ public class StoreEngine implements Lifecycle<StoreEngineOptions> {
             return true;
         }
         return false;
+    }
+
+    public StateListenerContainer<Long> getStateListenerContainer() {
+        return stateListenerContainer;
     }
 
     public List<Long> getLeaderRegionIds() {

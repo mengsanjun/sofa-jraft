@@ -29,6 +29,7 @@ import com.alipay.remoting.rpc.RpcServer;
 import com.alipay.sofa.jraft.rhea.cmd.store.BatchDeleteRequest;
 import com.alipay.sofa.jraft.rhea.cmd.store.BatchPutRequest;
 import com.alipay.sofa.jraft.rhea.cmd.store.CompareAndPutRequest;
+import com.alipay.sofa.jraft.rhea.cmd.store.ContainsKeyRequest;
 import com.alipay.sofa.jraft.rhea.cmd.store.DeleteRangeRequest;
 import com.alipay.sofa.jraft.rhea.cmd.store.DeleteRequest;
 import com.alipay.sofa.jraft.rhea.cmd.store.GetAndPutRequest;
@@ -45,7 +46,6 @@ import com.alipay.sofa.jraft.rhea.cmd.store.RangeSplitRequest;
 import com.alipay.sofa.jraft.rhea.cmd.store.ResetSequenceRequest;
 import com.alipay.sofa.jraft.rhea.cmd.store.ScanRequest;
 import com.alipay.sofa.jraft.rhea.util.concurrent.CallerRunsPolicyWithReport;
-import com.alipay.sofa.jraft.rhea.util.concurrent.DiscardOldPolicyWithReport;
 import com.alipay.sofa.jraft.rhea.util.concurrent.NamedThreadFactory;
 import com.alipay.sofa.jraft.util.ThreadPoolUtil;
 
@@ -66,11 +66,8 @@ public final class StoreEngineHelper {
         return newPool(coreThreads, coreThreads, "rheakv-raft-state-trigger", workQueue);
     }
 
-    public static ExecutorService createSnapshotExecutor(final int coreThreads) {
-        final BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(1);
-        final String name = "rheakv-snapshot-executor";
-        final RejectedExecutionHandler handler = new DiscardOldPolicyWithReport(name);
-        return newPool(coreThreads, coreThreads, workQueue, name, handler);
+    public static ExecutorService createSnapshotExecutor(final int coreThreads, final int maxThreads) {
+        return newPool(coreThreads, maxThreads, "rheakv-snapshot-executor");
     }
 
     public static ExecutorService createCliRpcExecutor(final int coreThreads) {
@@ -95,6 +92,7 @@ public final class StoreEngineHelper {
     public static void addKvStoreRequestProcessor(final RpcServer rpcServer, final StoreEngine engine) {
         rpcServer.registerUserProcessor(new KVCommandProcessor<>(GetRequest.class, engine));
         rpcServer.registerUserProcessor(new KVCommandProcessor<>(MultiGetRequest.class, engine));
+        rpcServer.registerUserProcessor(new KVCommandProcessor<>(ContainsKeyRequest.class, engine));
         rpcServer.registerUserProcessor(new KVCommandProcessor<>(GetSequenceRequest.class, engine));
         rpcServer.registerUserProcessor(new KVCommandProcessor<>(ResetSequenceRequest.class, engine));
         rpcServer.registerUserProcessor(new KVCommandProcessor<>(ScanRequest.class, engine));
